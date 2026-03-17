@@ -46,13 +46,28 @@ if train_model_btn:
     st.sidebar.success(f"Model trained! Accuracy: {acc:.2f}")
 
 # ------------------ LOAD MODEL ------------------
-if os.path.exists("models/vectorizer.pkl") and os.path.exists("models/classifier.pkl"):
-    vectorizer = load_vectorizer()
-    model = load_model()
-else:
-    vectorizer = None
-    model = None
+    if os.path.exists("models/vectorizer.pkl") and os.path.exists("models/classifier.pkl"):
+        try:
+            vectorizer = load_vectorizer()
+            model = load_model()
+        except:
+            vectorizer = None
+            model = None
+    else:
+        vectorizer = None
+        model = None
 
+
+    # 🔥 Auto-train if missing
+    if vectorizer is None or model is None:
+        st.warning("Model not found. Training automatically...")
+
+        df['clean_resume'] = df['Resume_str'].apply(clean_text)
+
+        vectorizer, X = fit_vectorizer(df['clean_resume'])
+        model, acc = train_classifier(X, df['Category'])
+
+        st.success(f"Model trained successfully! Accuracy: {acc:.2f}")
 # ------------------ MAIN INPUT ------------------
 col1, col2 = st.columns(2)
 
