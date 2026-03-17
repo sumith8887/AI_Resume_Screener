@@ -18,23 +18,44 @@ from src.data_loader import load_resume_data
 
 # ------------------ UI CONFIG ------------------
 st.set_page_config(page_title="AI Resume Screening System", layout="wide")
-
 st.title("🧠 AI Resume Screening & Job Recommendation System")
 
 # ------------------ SIDEBAR ------------------
 st.sidebar.header("⚙️ Options")
-
 train_model_btn = st.sidebar.button("Train Model")
 
 # ------------------ LOAD DATA ------------------
 @st.cache_data
 def load_data():
-    df = load_resume_data()
-    return df
+    return load_resume_data()
 
 df = load_data()
 
-# ------------------ TRAIN MODEL ------------------
+# ------------------ INIT VARIABLES ------------------
+vectorizer = None
+model = None
+
+# ------------------ LOAD MODEL ------------------
+if os.path.exists("models/vectorizer.pkl") and os.path.exists("models/classifier.pkl"):
+    try:
+        vectorizer = load_vectorizer()
+        model = load_model()
+    except:
+        vectorizer = None
+        model = None
+
+# ------------------ AUTO TRAIN (IMPORTANT) ------------------
+if vectorizer is None or model is None:
+    st.warning("⚠️ Model not found. Training automatically...")
+
+    df['clean_resume'] = df['Resume_str'].apply(clean_text)
+
+    vectorizer, X = fit_vectorizer(df['clean_resume'])
+    model, acc = train_classifier(X, df['Category'])
+
+    st.success(f"✅ Model trained successfully! Accuracy: {acc:.2f}")
+
+# ------------------ MANUAL TRAIN BUTTON ------------------
 if train_model_btn:
     st.sidebar.write("Training model...")
 
@@ -45,29 +66,6 @@ if train_model_btn:
 
     st.sidebar.success(f"Model trained! Accuracy: {acc:.2f}")
 
-# ------------------ LOAD MODEL ------------------
-    if os.path.exists("models/vectorizer.pkl") and os.path.exists("models/classifier.pkl"):
-        try:
-            vectorizer = load_vectorizer()
-            model = load_model()
-        except:
-            vectorizer = None
-            model = None
-    else:
-        vectorizer = None
-        model = None
-
-
-    # 🔥 Auto-train if missing
-    if vectorizer is None or model is None:
-        st.warning("Model not found. Training automatically...")
-
-        df['clean_resume'] = df['Resume_str'].apply(clean_text)
-
-        vectorizer, X = fit_vectorizer(df['clean_resume'])
-        model, acc = train_classifier(X, df['Category'])
-
-        st.success(f"Model trained successfully! Accuracy: {acc:.2f}")
 # ------------------ MAIN INPUT ------------------
 col1, col2 = st.columns(2)
 
@@ -84,19 +82,15 @@ if st.button("🚀 Analyze Resume"):
 
     if not resume_file or not jd_text:
         st.warning("Please upload resume and enter job description.")
-    
-    else:
+        st.stop()
+
+    try:
         # Extract Resume Text
         resume_text = extract_text_from_pdf(resume_file)
 
         # Clean Text
         clean_resume = clean_text(resume_text)
         clean_jd = process_job_description(jd_text)
-
-        # Check vectorizer
-        if vectorizer is None:
-            st.error("⚠️ Please train the model first from sidebar.")
-            st.stop()
 
         # Transform
         resume_vec = transform_text(vectorizer, [clean_resume])
@@ -109,16 +103,15 @@ if st.button("🚀 Analyze Resume"):
         resume_skills = extract_skills(clean_resume)
         jd_skills = extract_skills(clean_jd)
 
-        skill_percent, missing_skills, matched_skills = skill_match(resume_skills, jd_skills)
+        skill_percent, missing_skills, matched_skills = skill_match(
+            resume_skills, jd_skills
+        )
 
         # Final Score
         final = final_score(similarity_score, skill_percent)
 
         # Predict Role
-        if model:
-            predicted_role = predict_role(model, vectorizer, clean_resume)
-        else:
-            predicted_role = "Model not trained"
+        predicted_role = predict_role(model, vectorizer, clean_resume)
 
         # Job Recommendations
         jobs = recommend_jobs(predicted_role)
@@ -150,3 +143,7 @@ if st.button("🚀 Analyze Resume"):
             st.success("Suitable Candidate ✅")
         else:
             st.error("Not Suitable ❌")
+
+    except Exception as e:
+        st.error("⚠️ Something went wrong while processing.")
+        st.exception(e)
